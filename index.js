@@ -1,19 +1,29 @@
+require("dotenv").config();
 const http = require("http")
 const bcrypt = require("bcrypt")
 const jwt = require("jsonwebtoken")
 const fs = require("fs").promises
-require("dotenv").config()
 
-const PORT = 3000
+
+const port = process.env.PORT || 3000
 
 async function readUsers() {
-    const data = await fs.readFile("users.json", "utf8")
-    return JSON.parse(data)
+  try {
+    const data = await fs.readFile("users.json", "utf8");
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
 }
 
+
 async function readPosts() {
-    const data = await fs.readFile("posts.json", "utf8")
-    return JSON.parse(data)
+    try {
+        const data = await fs.readFile("posts.json", "utf8")
+        return JSON.parse(data)
+    } catch {
+        return[]
+    }
 }
 
 async function writeUsers(data) {
@@ -82,7 +92,7 @@ const server = http.createServer(async (req, res) => {
                     res.writeHead(401)
                     return res.end(JSON.stringify({success: false, message: "Invalid credentials"}))
                 }
-                const validPassword = await bcrypt.compare(password, validUser.password)
+                const validPassword = await bcrypt.compare(password, validUser.hashedpassword)
                 if (!validPassword){
                     res.writeHead(401)
                     return res.end(JSON.stringify({success: false, message: "Incorrect password"}))
@@ -90,7 +100,7 @@ const server = http.createServer(async (req, res) => {
                 const token = jwt.sign(
                     {email},
                     process.env.JWT_SECRET,
-                    {expiresIn: "1hr"}
+                    {expiresIn: "1h"}
                 )
                 res.writeHead(200)
                 return res.end(JSON.stringify({success: true, message: "Login successful", data: token}))
@@ -205,6 +215,6 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({success: false, message: "Server error", error: error.message}))
     }
 })
-server.listen(PORT, () => {
-    console.log(`Server is running at port ${PORT}`)
+server.listen(port, () => {
+    console.log(`Server is running at port ${port}`)
 })
