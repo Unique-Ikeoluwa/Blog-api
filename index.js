@@ -1,5 +1,8 @@
 const http = require("http")
+const bcrypt = require("bcrypt")
+const jwt = require("jsonwebtoken")
 const fs = require("fs").promises
+require("dotenv").config()
 
 const PORT = 3000
 
@@ -49,11 +52,12 @@ const server = http.createServer(async (req, res) => {
                     res.writeHead(409)
                     return res.end(JSON.stringify({success: false, message: "User already exist"}))
                 }
+                const hashedPassword = await bcrypt.hash(password, 10)
                 const newUser = {
                     id: newId,
                     email,
                     name,
-                    password
+                    hashedPassword
                 }
                 users.push(newUser)
                 await writeUsers(users)
@@ -78,12 +82,18 @@ const server = http.createServer(async (req, res) => {
                     res.writeHead(401)
                     return res.end(JSON.stringify({success: false, message: "Invalid credentials"}))
                 }
-                if (validUser.password !== password){
+                const validPassword = await bcrypt.compare(password, validUser.password)
+                if (!validPassword){
                     res.writeHead(401)
                     return res.end(JSON.stringify({success: false, message: "Incorrect password"}))
                 }
+                const token = jwt.sign(
+                    {email},
+                    process.env.JWT_SECRET,
+                    {expiresIn: "1hr"}
+                )
                 res.writeHead(200)
-                return res.end(JSON.stringify({success: true, message: "Login successful", data: validUser}))
+                return res.end(JSON.stringify({success: true, message: "Login successful", data: token}))
             })
             return
         }
