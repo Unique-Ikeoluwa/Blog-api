@@ -34,6 +34,43 @@ async function writePosts(data) {
     await fs.writeFile("posts.json", JSON.stringify(data, null, 2))
 }
 
+function runMiddlewares(req, res, middlewares){
+    let index = 0
+    function next(){
+        const middleware = middlewares[index++]
+        if(middleware) middleware(req, res, next)
+    }
+    next()
+}
+
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers["authorization"]
+    const token = authHeader && authHeader.split(" ")[1]
+    if(!token){
+        res.writeHead(401, {"Content-Type": "application/json"})
+        return res.end({success: false, message: "Access denied, token required"})
+    }
+    jwt.verify(token, process.env.JWT_SECRET, (error, user)=> {
+        if(error){
+            res.writeHead(403, {"Content-Type": "application/json"})
+            return res.end({success: false, message: "Invalid or expired token"})
+        }
+        req.user = user
+        next()
+    })
+}
+
+function authorizeRole(...roles) {
+    return (req, res, next) => {
+        if(!roles.includes(req.user.role)){
+            res.writeHead(401, {"Content-Type": "application/json"})
+            return res.end({success: false, message: "Unauthorized"})
+        }
+        next()
+    }
+    
+}
+
 
 const server = http.createServer(async (req, res) => {
     res.setHeader("Content-Type", "application/json")
@@ -65,6 +102,7 @@ const server = http.createServer(async (req, res) => {
                 const hashedPassword = await bcrypt.hash(password, 10)
                 const newUser = {
                     id: newId,
+                    role: "user",
                     email,
                     name,
                     hashedPassword
@@ -192,18 +230,31 @@ const server = http.createServer(async (req, res) => {
             })
             return
         }
-
+        
         else if (url.startsWith("/posts/") && method === "DELETE"){
-            const posts = await readPosts()
-            const id = parseInt(url.split("/")[2])
-            const newPosts = posts.filter(post => post.id !== id)
-            if (newPosts.length === posts.length){
-                res.writeHead(404)
-                return res.end(JSON.stringify({success: false, message: "Post not found"}))
-            }
-            await writePosts(newPosts)
-            res.writeHead(200)
-            return res.end(JSON.stringify({success: true, message: "Post deleted successfully"}))
+            runMiddlewares(req, res, [
+                authenticateToken,
+                authorizeRole("admin"),
+                async()=> {
+                    const posts = await readPosts()
+                    const id = parseInt(url.split("/")[2])
+                    const newPosts = posts.filter(post => post.id !== id)
+                    if (newPosts.length === posts.length){
+                        res.writeHead(404)
+                        return res.end(JSON.stringify({success: false, message: "Post not found"}))
+                    }
+                    await writePosts(newPosts)
+                    res.writeHead(200)
+                    return res.end(JSON.stringify({success: true, message: "Post deleted successfully"}))
+                }
+            ])
+        }
+
+        else if (url === "/profile" && method === "GET"){
+            authenticateToken(req, res, () => {
+                res.writeHead(200)
+                res.end(JSON.stringify({success: true, message: "Access granted", user: req.user}))
+            })
         }
 
         else {
