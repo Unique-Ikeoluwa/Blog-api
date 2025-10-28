@@ -48,12 +48,12 @@ function authenticateToken(req, res, next) {
     const token = authHeader && authHeader.split(" ")[1]
     if(!token){
         res.writeHead(401, {"Content-Type": "application/json"})
-        return res.end({success: false, message: "Access denied, token required"})
+        return res.end(JSON.stringify({success: false, message: "Access denied, token required"}))
     }
     jwt.verify(token, process.env.JWT_SECRET, (error, user)=> {
         if(error){
             res.writeHead(403, {"Content-Type": "application/json"})
-            return res.end({success: false, message: "Invalid or expired token"})
+            return res.end(JSON.stringify({success: false, message: "Invalid or expired token"}))
         }
         req.user = user
         next()
@@ -64,7 +64,7 @@ function authorizeRole(...roles) {
     return (req, res, next) => {
         if(!roles.includes(req.user.role)){
             res.writeHead(401, {"Content-Type": "application/json"})
-            return res.end({success: false, message: "Unauthorized"})
+            return res.end(JSON.stringify({success: false, message: "Unauthorized"}))
         }
         next()
     }
@@ -130,13 +130,13 @@ const server = http.createServer(async (req, res) => {
                     res.writeHead(401)
                     return res.end(JSON.stringify({success: false, message: "Invalid credentials"}))
                 }
-                const validPassword = await bcrypt.compare(password, validUser.hashedpassword)
+                const validPassword = await bcrypt.compare(password, validUser.hashedPassword)
                 if (!validPassword){
                     res.writeHead(401)
                     return res.end(JSON.stringify({success: false, message: "Incorrect password"}))
                 }
                 const token = jwt.sign(
-                    {email},
+                    {email: validUser.email, role: validUser.role},
                     process.env.JWT_SECRET,
                     {expiresIn: "1h"}
                 )
@@ -251,10 +251,13 @@ const server = http.createServer(async (req, res) => {
         }
 
         else if (url === "/profile" && method === "GET"){
-            authenticateToken(req, res, () => {
-                res.writeHead(200)
-                res.end(JSON.stringify({success: true, message: "Access granted", user: req.user}))
-            })
+            runMiddlewares(req, res, [
+                authenticateToken,
+                (req, res, () => {
+                    res.writeHead(200)
+                    res.end(JSON.stringify({success: true, message: "Access granted", user: req.user}))
+                })
+            ])
         }
 
         else {
@@ -269,3 +272,4 @@ const server = http.createServer(async (req, res) => {
 server.listen(port, () => {
     console.log(`Server is running at port ${port}`)
 })
+
